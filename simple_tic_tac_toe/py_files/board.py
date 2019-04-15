@@ -33,6 +33,8 @@ class Board():
                 self.p1 = Human()
             elif player_type == 'random':
                 self.p1 = Random_player()
+            elif player_type == 'q_player':
+                self.p1 = Q_player([20,10])
 
     def set_up_p2(self, p2_config):
         if p2_config is None:
@@ -43,7 +45,9 @@ class Board():
                 self.p2 = Human()
             elif player_type == 'random':
                 self.p2 = Random_player()
-
+            elif player_type == 'q_player':
+                self.p2 = Q_player([20,10])
+                
     def reset(self):
         self.state = np.zeros(9)
         self.observation = np.zeros(9)
@@ -52,7 +56,7 @@ class Board():
 
     def random_pick_start_player_id(self):
         self.active_player_id = np.random.choice([1, -1])
-
+        
     #---------------------update_state starts-------------------------------
     def check_if_terminal_state(self, state=None):
         # if given state, determine whether the given state is a terminal state,
@@ -114,7 +118,7 @@ class Board():
 
         # update self.is_terminal_state
         self.is_terminal_state = is_terminal_state
-
+        
         # calculate reward
         reward = self.determine_reward(is_terminal_state, winner)
 
@@ -131,14 +135,12 @@ class Board():
     #------------------step starts----------------------------------
 
     def get_active_player_id(self):
-        """
-        return the id of the active player (1 or -1)
+        """ return the id of the active player (1 or -1)
         """
         return self.active_player_id
 
     def swap_active_player_id(self):
-        """
-        swap the id of the active player (1 or -1)
+        """ swap the id of the active player (1 or -1)
         """
         self.active_player_id *= -1
         return True
@@ -165,6 +167,7 @@ class Board():
         self.swap_active_player_id()
 
         return new_observation, reward, is_terminal_state
+
     #------------------step ends----------------------------------
 
     def print_board(self):
@@ -182,20 +185,20 @@ class Board():
         print('%s | %s | %s\n' % (symbol[6], symbol[7], symbol[8]))
 
         print('is_terminal_state: \n%s\n' % self.is_terminal_state)
-
+        
         if self.is_terminal_state:
             print('Game Over!')
         else:
             print('current_player: %s' % self.get_active_player_id())
-
+        
         return True
 
     def get_all_possible_action(self):
         return np.array([1 if cell == 0 else 0 for cell in self.state])
-
+    
     def train(self):
         pass
-
+    
     def get_active_player(self):
         """ return active player (not its id)
         """
@@ -207,18 +210,19 @@ class Board():
         else:
             print('ERROR, self.active_player_id = %s.\n' % self.active_id)
             return None
-
+    
     def play(self):
         self.reset()
         self.random_pick_start_player_id()
-
+        
         self.p1.reset(player_id=1)
         self.p2.reset(player_id=-1)
-
+        
         while not self.is_terminal_state:
             self.print_board()
             is_action_available = self.get_all_possible_action()
-            action = self.get_active_player().pick_action(is_action_available=is_action_available)
+            action = self.get_active_player().pick_action(is_action_available=is_action_available, 
+                                                          observation=self.observation)
             self.step(action)
 
         self.print_board()
