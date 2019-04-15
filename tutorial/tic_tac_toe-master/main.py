@@ -153,4 +153,4 @@ def play():
         print(game.game_status())
         print('-------------')
 
-train()
+#train()
