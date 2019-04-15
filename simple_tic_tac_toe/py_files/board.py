@@ -1,10 +1,10 @@
 import numpy as np
 
-#from player import Human, Random_player
+from .player import Human, Random_player, Q_player
 
 
 class Board():
-    '''
+    """
     Attribute:
         - self.p1, Class Player
         - self.p2, Class Player
@@ -15,7 +15,7 @@ class Board():
         - self.observation = np array, size [9] (same as state now)
         - self.active_player_id, int, 1 or -1
         - self.is_terminal_state, bool
-    '''
+    """
     def __init__(self, p1_config=None, p2_config=None, win_reward=1, lose_reward=-1, draw_reward=0):
         self.set_up_p1(p1_config)
         self.set_up_p2(p2_config)
@@ -25,6 +25,9 @@ class Board():
         self.reset()
 
     def set_up_p1(self, p1_config):
+        """
+        set up self.p1
+        """
         if p1_config is None:
             self.p1 = None
         else:
@@ -37,6 +40,9 @@ class Board():
                 self.p1 = Q_player([20,10])
 
     def set_up_p2(self, p2_config):
+        """
+        set up self.p2
+        """
         if p2_config is None:
             self.p2 = None
         else:
@@ -47,21 +53,31 @@ class Board():
                 self.p2 = Random_player()
             elif player_type == 'q_player':
                 self.p2 = Q_player([20,10])
-                
+
     def reset(self):
+        """ reset the board
+        should run this when a new episode starts,
+        the starting player is default to be player id 1
+        """
         self.state = np.zeros(9)
         self.observation = np.zeros(9)
         self.active_player_id = 1
         self.is_terminal_state = False
 
     def random_pick_start_player_id(self):
+        """  choose the starting player
+        run this after def reset()
+        """
         self.active_player_id = np.random.choice([1, -1])
-        
+
     #---------------------update_state starts-------------------------------
     def check_if_terminal_state(self, state=None):
-        # if given state, determine whether the given state is a terminal state,
-        # else check whether self.state is a terminal state
+        """ check if terminal state is reached and return the winner
+        if state is not None, determine whether the given state is a terminal state,
+        else check whether self.state is a terminal state
 
+        return [bool, winner]
+        """
         if state is None:
             state = self.state
 
@@ -85,12 +101,16 @@ class Board():
         return [True, 0]
 
     def determine_reward(self, is_terminal_state, winner):
+        """ determine both players' reward
+        given is_terminal_state (bool) and winner ([1, -1]),
+        return [p1_reward, p2_reward]
+        """
         if winner == 1:
             return [self.win_reward, self.lose_reward]
         elif winner == -1:
             return [self.lose_reward, self.win_reward]
         elif is_terminal_state:
-            return [draw_reward, draw_reward]
+            return [self.draw_reward, self.draw_reward]
         else:
             return [0, 0]
 
@@ -103,7 +123,7 @@ class Board():
         return self.observation
 
     def update_state(self, active_player_id, action):
-        """given a valid action and the current active player id
+        """ given a valid action and the current active player id
         1. update the internal state
         2. return new_observation, reward, is_terminal_state
         """
@@ -118,7 +138,7 @@ class Board():
 
         # update self.is_terminal_state
         self.is_terminal_state = is_terminal_state
-        
+
         # calculate reward
         reward = self.determine_reward(is_terminal_state, winner)
 
@@ -171,12 +191,18 @@ class Board():
     #------------------step ends----------------------------------
 
     def print_board(self):
+        """ print out the board
+        """
         board = self.state
 
         symbol = ['O' if board[i] == 1 else ('X' if board[i] == -1 else ' ')
                   for i in range(9)]
 
         print('\n--------------------------------------------------\n')
+
+        # "current player" is actually the last active player
+        print('current_player: %s \n'  % (self.get_active_player_id()*-1))
+
         print('Board:\n')
         print('%s | %s | %s' % (symbol[0], symbol[1], symbol[2]))
         print('---------')
@@ -184,21 +210,20 @@ class Board():
         print('---------')
         print('%s | %s | %s\n' % (symbol[6], symbol[7], symbol[8]))
 
-        print('is_terminal_state: \n%s\n' % self.is_terminal_state)
-        
+        print('is_terminal_state: \n%s' % self.is_terminal_state)
+
         if self.is_terminal_state:
-            print('Game Over!')
-        else:
-            print('current_player: %s' % self.get_active_player_id())
-        
+            print('\nGame Over!')
+
         return True
 
     def get_all_possible_action(self):
+        """ return the availability of each action
+        return a np array with size [9],
+        1 means that action is available, 0 means the opposite
+        """
         return np.array([1 if cell == 0 else 0 for cell in self.state])
-    
-    def train(self):
-        pass
-    
+
     def get_active_player(self):
         """ return active player (not its id)
         """
@@ -210,19 +235,36 @@ class Board():
         else:
             print('ERROR, self.active_player_id = %s.\n' % self.active_id)
             return None
-    
+
+    def train(self):
+        """ training mode of the Q players
+        """
+        pass
+
     def play(self):
+        """ testing mode/ playing mode
+        """
+        # reset the board and randomly pick the starting player
         self.reset()
         self.random_pick_start_player_id()
-        
+
+        # assign player id to both players
         self.p1.reset(player_id=1)
         self.p2.reset(player_id=-1)
-        
+
         while not self.is_terminal_state:
             self.print_board()
+
+            # get a np array to indicate whether each acion is available
             is_action_available = self.get_all_possible_action()
-            action = self.get_active_player().pick_action(is_action_available=is_action_available, 
+
+            # ask the current active player to pick a action
+            action = self.get_active_player().pick_action(is_action_available=is_action_available,
                                                           observation=self.observation)
+
+            # given the action, update the board
+            ###TODO: consider remove the return things of step function
             self.step(action)
 
+        # print the final state of the board
         self.print_board()

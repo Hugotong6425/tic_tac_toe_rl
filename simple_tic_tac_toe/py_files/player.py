@@ -22,8 +22,14 @@ class Player():
 
     @staticmethod
     def tune_observation_view(observation, player_id):
-        '''
-        player_id either 1 or -1. Swap the observation such that 1 means self and -1 means the opponent
+        ''' if player_id is -1, swap the 1 and -1 of the observation
+        player_id either 1 or -1. Swap the observation such that 1 means self
+        and -1 means the opponent
+
+        Args:
+            - observation: np array size [9]
+            - player_id: int, 1 or -1
+
         e.g.
         if player_id = 1, no need to swap the view,
         input = array([ 1, -1, 0,
@@ -45,10 +51,13 @@ class Player():
 
         '''
         return observation * player_id
-    
+
     def observe(self, observation):
-        '''
-        receive raw observation from env and tune it if needed
+        ''' update self.observation
+        turn the observation if needed before updating self.observation
+
+        Args:
+            - observation: np array size [9]
         '''
         self.observation = self.tune_observation_view(observation, self.player_id)
 
@@ -98,9 +107,9 @@ class Q_player(Player):
         self.optimizer = optimizer
         self.loss = loss
         self.initialize_neural_network(saved_nn_path)
-       
-        super(Q_player, self).__init__()    
-        
+
+        super(Q_player, self).__init__()
+
     def initialize_neural_network(self, saved_nn_path=None):
         '''
         if saved_nn_path is not None, load the model.
@@ -108,44 +117,46 @@ class Q_player(Player):
         '''
         if saved_nn_path is None:
             x = Input(shape=(9,))
-            
-            hidden_result = Dense(self.hidden_layers_size[0], activation='relu', 
+
+            hidden_result = Dense(self.hidden_layers_size[0], activation='relu',
                                   kernel_initializer='he_normal')(x)
             if len(self.hidden_layers_size) > 1:
                 for num_hidden_neurons in self.hidden_layers_size[1:]:
-                    hidden_result = Dense(num_hidden_neurons, activation='relu', 
+                    hidden_result = Dense(num_hidden_neurons, activation='relu',
                                           kernel_initializer='he_normal')(hidden_result)
-                    
+
             y = Dense(9, activation=None)(hidden_result)
-            
+
             self.brain = Model(inputs=x, outputs=y)
-            
+
             self.brain.compile(self.optimizer, loss=self.loss)
-            
+
         else:
             #self.brain = keras.load_model()
             pass
 
     def pick_action(self, **kwargs):
-        '''
-        given 1 observation and is_action_available, predict the best move
-        
+        '''given observation and is_action_available, predict the best action
+
+        Args:
+            - kwargs['observation']: np array with size [9]
+            - kwargs['is_action_available']: np array with size [9]
+
+        Returns:
+            - picked_cell: int, 0-8
+
         Note: can only predict 1 observation at a time now
         '''
         observation = kwargs['observation']
-        print('observation: ', observation)
-        self.observe(observation)
-        
         is_action_available = kwargs['is_action_available']
-        
-        q_pred = player.brain.predict(x=self.observation.reshape([1, 9])).reshape([-1])
-        
+
+        # update self.observation
+        self.observe(observation)
+
+        # pick the best action within all possible action given by the board
+        q_pred = self.brain.predict(x=self.observation.reshape([1, 9])).reshape([-1])
         mask = (is_action_available == 1)
-
         subset_idx = np.argmax(q_pred[mask])
-
         picked_cell = np.arange(q_pred.shape[0])[mask][subset_idx]
-    
-        print (picked_cell)
+
         return picked_cell
-        
