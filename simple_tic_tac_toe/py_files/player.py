@@ -11,6 +11,7 @@ class Player():
     Abstract player class
     """
     def __init__(self):
+        self.player_name = None
         self.player_id = None
 
     def reset(self, player_id):
@@ -65,13 +66,17 @@ class Player():
         '''
         pass
 
+    def get_player_name(self):
+        return self.player_name
+
 
 class Human(Player):
     '''
     choose this player if you want to play the game
     '''
-    def __init__(self):
+    def __init__(self, player_name='human player'):
         super(Human, self).__init__()
+        self.player_name = player_name
 
     def pick_action(self, **kwargs):
         cell = input('Pick a cell (top left is 0 and bottom right is 8): \n')
@@ -82,8 +87,9 @@ class Random_player(Player):
     """
     this player will pick random acion for all situation
     """
-    def __init__(self):
+    def __init__(self, player_name='random player'):
         super(Random_player, self).__init__()
+        self.player_name = player_name
 
     def pick_action(self, **kwargs):
         possible_action_list = np.argwhere(kwargs['is_action_available'] == 1).reshape([-1])
@@ -91,13 +97,18 @@ class Random_player(Player):
 
 
 class Q_player(Player):
-    def __init__(self, hidden_layers_size, saved_nn_path=None, optimizer='adam', loss='mse'):
+    def __init__(self, hidden_layers_size, batch_size_learn=32,
+                 batch_until_copy=20, saved_nn_path=None, optimizer='adam',
+                 loss='mse', player_name='q player'):
+        super(Q_player, self).__init__()
         self.hidden_layers_size = hidden_layers_size
+        self.batch_size_learn = batch_size_learn
+        self.batch_until_copy = batch_until_copy
         self.optimizer = optimizer
         self.loss = loss
+        self.player_name = player_name
         self.initialize_neural_network(saved_nn_path)
 
-        super(Q_player, self).__init__()
 
     def initialize_neural_network(self, saved_nn_path=None):
         '''
