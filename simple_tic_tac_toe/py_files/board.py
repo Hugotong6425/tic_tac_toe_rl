@@ -30,15 +30,29 @@ class Board():
         """
         if player_config is None:
             return None
-        
         player_type = player_config['player_type']
 
         if player_type == 'human':
-            return Human()
+            player_name = player_config.get('player_name', 'human player')
+            return Human(player_name)
         elif player_type == 'random':
-            return Random_player()
+            player_name = player_config.get('player_name', 'random player')
+            return Random_player(player_name)
         elif player_type == 'q_player':
-            return Q_player([20,10])
+            # load in all config and set the default value if not exist
+            player_name = player_config.get('player_name', 'q player')
+            hidden_layers_size = player_config['hidden_layers_size']
+            batch_size_learn = player_config.get('batch_size_learn', 32)
+            batch_until_copy = player_config.get('batch_until_copy', 20)
+            saved_nn_path = player_config.get('saved_nn_path', None)
+            optimizer = player_config.get('optimizer', 'adam')
+            loss = player_config.get('loss', 'mse')
+
+            return Q_player(hidden_layers_size=hidden_layers_size,
+                            batch_size_learn=batch_size_learn,
+                            batch_until_copy=batch_until_copy,
+                            saved_nn_path=saved_nn_path, optimizer=optimizer,
+                            loss=loss, player_name=player_name)
 
     def reset(self):
         """ reset the board
@@ -187,7 +201,8 @@ class Board():
         print('\n--------------------------------------------------\n')
 
         # "current player" is actually the last active player
-        print('current_player: %s \n'  % (self.get_active_player_id()*-1))
+        print('current player id: %s \n'  % (self.get_active_player_id()*-1))
+        print('current player name: %s \n'  % (self.get_active_player().get_player_name()))
 
         print('Board:\n')
         print('%s | %s | %s' % (symbol[0], symbol[1], symbol[2]))
@@ -239,8 +254,6 @@ class Board():
         self.p2.reset(player_id=-1)
 
         while not self.is_terminal_state:
-            self.print_board()
-
             # get a np array to indicate whether each acion is available
             is_action_available = self.get_all_possible_action()
 
@@ -252,5 +265,4 @@ class Board():
             ###TODO: consider remove the return things of step function
             self.step(action)
 
-        # print the final state of the board
-        self.print_board()
+            self.print_board()
