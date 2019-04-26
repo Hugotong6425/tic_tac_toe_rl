@@ -17,42 +17,28 @@ class Board():
         - self.is_terminal_state, bool
     """
     def __init__(self, p1_config=None, p2_config=None, win_reward=1, lose_reward=-1, draw_reward=0):
-        self.set_up_p1(p1_config)
-        self.set_up_p2(p2_config)
+        self.p1 = self.set_up_player(p1_config)
+        self.p2 = self.set_up_player(p2_config)
         self.win_reward = win_reward
         self.lose_reward = lose_reward
         self.draw_reward = draw_reward
         self.reset()
 
-    def set_up_p1(self, p1_config):
+    def set_up_player(self, player_config):
         """
         set up self.p1
         """
-        if p1_config is None:
-            self.p1 = None
-        else:
-            player_type = p1_config['player_type']
-            if player_type == 'human':
-                self.p1 = Human()
-            elif player_type == 'random':
-                self.p1 = Random_player()
-            elif player_type == 'q_player':
-                self.p1 = Q_player([20,10])
+        if player_config is None:
+            return None
+        
+        player_type = player_config['player_type']
 
-    def set_up_p2(self, p2_config):
-        """
-        set up self.p2
-        """
-        if p2_config is None:
-            self.p2 = None
-        else:
-            player_type = p2_config['player_type']
-            if player_type == 'human':
-                self.p2 = Human()
-            elif player_type == 'random':
-                self.p2 = Random_player()
-            elif player_type == 'q_player':
-                self.p2 = Q_player([20,10])
+        if player_type == 'human':
+            return Human()
+        elif player_type == 'random':
+            return Random_player()
+        elif player_type == 'q_player':
+            return Q_player([20,10])
 
     def reset(self):
         """ reset the board
