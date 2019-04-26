@@ -12,13 +12,11 @@ class Player():
     """
     def __init__(self):
         self.player_id = None
-        self.observation = None
 
     def reset(self, player_id):
         '''reset to the initial state
         '''
         self.player_id = player_id
-        self.observation = None
 
     @staticmethod
     def tune_observation_view(observation, player_id):
@@ -51,15 +49,6 @@ class Player():
 
         '''
         return observation * player_id
-
-    def observe(self, observation):
-        ''' update self.observation
-        turn the observation if needed before updating self.observation
-
-        Args:
-            - observation: np array size [9]
-        '''
-        self.observation = self.tune_observation_view(observation, self.player_id)
 
     def pick_action(self, **kwargs):
         '''different players have different way to pick an action
@@ -150,11 +139,10 @@ class Q_player(Player):
         observation = kwargs['observation']
         is_action_available = kwargs['is_action_available']
 
-        # update self.observation
-        self.observe(observation)
+        tuned_observation = self.tune_observation_view(observation, self.player_id)
 
         # pick the best action within all possible action given by the board
-        q_pred = self.brain.predict(x=self.observation.reshape([1, 9])).reshape([-1])
+        q_pred = self.brain.predict(x=tuned_observation.reshape([1, 9])).reshape([-1])
         mask = (is_action_available == 1)
         subset_idx = np.argmax(q_pred[mask])
         picked_cell = np.arange(q_pred.shape[0])[mask][subset_idx]
