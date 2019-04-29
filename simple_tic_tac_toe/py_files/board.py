@@ -1,6 +1,7 @@
+import copy
 import numpy as np
 
-from .player import Human, Random_player, Q_player
+from .player import Player, Human, Random_player, Q_player
 
 
 class Board():
@@ -22,6 +23,7 @@ class Board():
         self.win_reward = win_reward
         self.lose_reward = lose_reward
         self.draw_reward = draw_reward
+        self.winner = 0
         self.reset()
 
     def set_up_player(self, player_config):
@@ -106,13 +108,13 @@ class Board():
         return [p1_reward, p2_reward]
         """
         if winner == 1:
-            return [self.win_reward, self.lose_reward]
+            return np.array([self.win_reward, self.lose_reward])
         elif winner == -1:
-            return [self.lose_reward, self.win_reward]
+            return np.array([self.lose_reward, self.win_reward])
         elif is_terminal_state:
-            return [self.draw_reward, self.draw_reward]
+            return np.array([self.draw_reward, self.draw_reward])
         else:
-            return [0, 0]
+            return np.array([0, 0])
 
     def update_observation_from_state(self):
         # update observation_board as the state_board
@@ -135,6 +137,8 @@ class Board():
         # check winning condition
         # winner = [1, -1, 0, None], 0 means draw, None means game not yet finished
         is_terminal_state, winner = self.check_if_terminal_state()
+
+        self.winner = winner
 
         # update self.is_terminal_state
         self.is_terminal_state = is_terminal_state
@@ -193,7 +197,7 @@ class Board():
     def print_board(self):
         """ print out the board
         """
-        board = self.state
+        board = self.observation
 
         symbol = ['O' if board[i] == 1 else ('X' if board[i] == -1 else ' ')
                   for i in range(9)]
@@ -237,10 +241,63 @@ class Board():
             print('ERROR, self.active_player_id = %s.\n' % self.active_id)
             return None
 
-    def train(self):
+    def train(self, episode):
         """ training mode of the Q players
         """
-        pass
+        memory = []
+
+        # assign player id to both players
+        self.p1.reset(player_id=1)
+        self.p2.reset(player_id=-1)
+        deep_copy = copy.deepcopy
+        tune_view = Player.tune_observation_view
+
+        initial_record = {'observation':None, 'action':None,
+                          'reward':np.array([0,0]), 'next_observation':None}
+        for epi in range(episode):
+            state_record = {1: copy.deepcopy(initial_record),
+                            -1: copy.deepcopy(initial_record)}
+            active_id = None
+
+            self.reset()
+            #self.random_pick_start_player_id()
+
+            while not self.is_terminal_state:
+                # get a np array to indicate whether each acion is available
+                is_action_available = self.get_all_possible_action()
+
+                # ask the current active player to pick a action
+                action = self.get_active_player().pick_action(
+                    is_action_available=is_action_available,
+                    observation=self.observation
+                )
+
+                # update state record
+                active_id = self.get_active_player_id()
+                inactive_id = active_id * -1
+                state_record[active_id]['observation'] = tune_view(self.observation.copy(), active_id)
+                state_record[active_id]['action'] = action
+
+                # given the action, update the board
+                observation, reward, is_terminal_state = self.step(action)
+
+                # update state record, note that the active id is changed in self.step()
+                state_record[active_id]['reward'] = tune_view(reward, active_id)
+                state_record[inactive_id]['next_observation'] = tune_view(observation.copy(), inactive_id)
+                state_record[inactive_id]['reward'] += tune_view(reward, inactive_id)
+
+                if state_record[inactive_id]['observation'] is not None:
+                    memory.append(deep_copy(state_record[inactive_id]))
+
+                self.print_board()
+
+            # add last state record
+            state_record[active_id]['next_observation'] = tune_view(self.observation, active_id)
+            memory.append(deep_copy(state_record[active_id]))
+
+            print('Winner is player: ', self.winner)
+
+        return memory
 
     def play(self):
         """ testing mode/ playing mode
@@ -258,8 +315,10 @@ class Board():
             is_action_available = self.get_all_possible_action()
 
             # ask the current active player to pick a action
-            action = self.get_active_player().pick_action(is_action_available=is_action_available,
-                                                          observation=self.observation)
+            action = self.get_active_player().pick_action(
+                is_action_available=is_action_available,
+                observation=self.observation
+            )
 
             # given the action, update the board
             ###TODO: consider remove the return things of step function

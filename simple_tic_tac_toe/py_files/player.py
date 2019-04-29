@@ -26,7 +26,7 @@ class Player():
         and -1 means the opponent
 
         Args:
-            - observation: np array size [9]
+            - observation: np array
             - player_id: int, 1 or -1
 
         e.g.
@@ -69,6 +69,9 @@ class Player():
     def get_player_name(self):
         return self.player_name
 
+    def get_player_id(self):
+        return self.player_id
+
 
 class Human(Player):
     '''
@@ -108,7 +111,6 @@ class Q_player(Player):
         self.loss = loss
         self.player_name = player_name
         self.initialize_neural_network(saved_nn_path)
-
 
     def initialize_neural_network(self, saved_nn_path=None):
         '''
