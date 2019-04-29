@@ -229,6 +229,12 @@ class Board():
         """
         return np.array([1 if cell == 0 else 0 for cell in self.state])
 
+    def get_player(self, player_id):
+        if player_id == 1:
+            return self.p1
+        elif player_id == -1:
+            return self.p2
+
     def get_active_player(self):
         """ return active player (not its id)
         """
@@ -241,12 +247,11 @@ class Board():
             print('ERROR, self.active_player_id = %s.\n' % self.active_id)
             return None
 
-    def train(self, episode):
+    def train(self, episode, memory_size=500):
         """ training mode of the Q players
         """
-        memory = []
-
         # assign player id to both players
+        # only player 1 could be the agent that accept training
         self.p1.reset(player_id=1)
         self.p2.reset(player_id=-1)
         deep_copy = copy.deepcopy
@@ -290,18 +295,16 @@ class Board():
 
                 # add the state record to the memory
                 if state_record[inactive_id]['observation'] is not None:
-                    memory.append(deep_copy(state_record[inactive_id]))
+                    self.p1.memorize(deep_copy(state_record[inactive_id]))
 
                 self.print_board()
 
             # add last state record to the memory
             state_record[active_id]['next_observation'] = tune_view(self.observation, active_id)
             state_record[active_id]['reward'] = state_record[active_id]['reward'][0]
-            memory.append(deep_copy(state_record[active_id]))
+            self.p1.memorize(deep_copy(state_record[active_id]))
 
             print('Winner is player: ', self.winner)
-
-        return memory
 
     def play(self):
         """ testing mode/ playing mode

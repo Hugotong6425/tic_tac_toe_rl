@@ -4,15 +4,17 @@ from keras.models import Model
 from keras.layers import Input, Dense
 from keras.optimizers import Adam
 
-# work for random player and human first
+from .memory import Memory
+
 
 class Player():
     """
     Abstract player class
     """
-    def __init__(self):
-        self.player_name = None
-        self.player_id = None
+    def __init__(self, memory_size=500, player_name=None, player_id=None):
+        self.memory = Memory(memory_size)
+        self.player_name = player_name
+        self.player_id = player_id
 
     def reset(self, player_id):
         '''reset to the initial state
@@ -56,10 +58,10 @@ class Player():
         '''
         pass
 
-    def memorize(self, add_this):
+    def memorize(self, record):
         '''some players will jot notes, some will not
         '''
-        pass
+        self.memory.add(record)
 
     def learn(self, board, **kwargs):
         '''some players will study, some will not
