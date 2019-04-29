@@ -285,14 +285,18 @@ class Board():
                 state_record[active_id]['reward'] = tune_view(reward, active_id)
                 state_record[inactive_id]['next_observation'] = tune_view(observation.copy(), inactive_id)
                 state_record[inactive_id]['reward'] += tune_view(reward, inactive_id)
+                # only record the player own reward, do not record the opponent reward
+                state_record[inactive_id]['reward'] = state_record[inactive_id]['reward'][0]
 
+                # add the state record to the memory
                 if state_record[inactive_id]['observation'] is not None:
                     memory.append(deep_copy(state_record[inactive_id]))
 
                 self.print_board()
 
-            # add last state record
+            # add last state record to the memory
             state_record[active_id]['next_observation'] = tune_view(self.observation, active_id)
+            state_record[active_id]['reward'] = state_record[active_id]['reward'][0]
             memory.append(deep_copy(state_record[active_id]))
 
             print('Winner is player: ', self.winner)
