@@ -60,10 +60,12 @@ class Board():
             saved_nn_path = player_config.get('saved_nn_path', None)
             is_train = player_config.get('is_train', True)
             epsilon = player_config.get('epsilon', 1.0)
+            is_double_dqns = player_config.get('is_double_dqns', True)
 
             return Q_player(hidden_layers_size=hidden_layers_size,
                             batch_size=batch_size, learning_rate=learning_rate,
                             saved_nn_path=saved_nn_path, is_train=is_train,
+                            is_double_dqns=is_double_dqns,
                             loss=loss, player_name=player_name, epsilon=epsilon)
 
     def reset(self):
@@ -278,6 +280,10 @@ class Board():
         initial_record = {'observation':None, 'action':None,
                           'reward':np.asarray([0,0]),
                           'next_observation':None, 'done':None}
+        win_rate_list = []
+        draw_rate_list = []
+        lose_rate_list = []
+        loss_list = []
 
         for epi in range(episode):
             if epi % 1000 == 0:
@@ -290,6 +296,11 @@ class Board():
                 win_cnt = 0
                 draw_cnt = 0
                 lose_cnt = 0
+
+                win_rate_list.append(win_cnt / 1000)
+                draw_rate_list.append(draw_cnt / 1000)
+                lose_rate_list.append(lose_cnt / 1000)
+                loss_list.append(loss)
 
             self.reset()
             self.pick_start_player_id(who_first)
@@ -354,7 +365,7 @@ class Board():
                 self.p1.update_qtarget()
 
         self.p1.save_model()
-        return True
+        return win_rate_list, draw_rate_list, lose_rate_list, loss_list
 
     def play(self, who_first='', episode=1, is_print_board=True):
         """ testing mode/ playing mode
