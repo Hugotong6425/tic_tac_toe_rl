@@ -113,8 +113,10 @@ class Random_player(Player):
 
 
 class Q_player(Player):
-    def __init__(self, hidden_layers_size, batch_size=64, learning_rate=0.001, epsilon=1, epsilon_min=0.01, epsilon_decay=0.999995,
-                 gamma=0.99, loss='mse', saved_nn_path=None, player_name='q player', is_train=True):
+    def __init__(self, hidden_layers_size, batch_size=64, learning_rate=0.001,
+                 epsilon=1, epsilon_min=0.01, epsilon_decay=0.999995,
+                 is_double_dqns=True, gamma=0.99, loss='mse', saved_nn_path=None,
+                 player_name='q player', is_train=True):
         super(Q_player, self).__init__()
         self.hidden_layers_size = hidden_layers_size
         self.batch_size = batch_size
@@ -122,6 +124,7 @@ class Q_player(Player):
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
+        self.is_double_dqns = is_double_dqns
         self.gamma = gamma
         self.loss = loss
         self.player_name = player_name
@@ -201,17 +204,26 @@ class Q_player(Player):
         batch_observation, batch_action, batch_reward, batch_next_observation, \
             batch_done = self.convert_memory_to_train_data(batch_memory_data)
 
-        # create q target for the network to learn
-        q_next_state = self.q_target_network.predict(batch_next_observation)
+        if self.is_double_dqns:
+            qnn_next_obser_q = self.qnn.predict(batch_next_observation) # [batch, 9]
+            next_obser_action = np.argmax(qnn_next_obser_q, axis=1) # [batch]
+
+            qtarget_next_obser_q = self.q_target_network.predict(batch_next_observation) # [batch, 9]
+            best_q_next_obser = np.array([qtarget_next_obser_q[i, next_obser_action[i]]
+                                          for i in range(self.batch_size)])
+        else:
+            # create q target for the network to learn
+            q_next_state = self.q_target_network.predict(batch_next_observation)
+            best_q_next_obser = np.max(q_next_state, axis=1)
 
         # [batch_size], target q value of the selected action
         # if done, then q_target = batch_reward, else need to add up the term behind
-        q_target = batch_reward + self.gamma * np.max(q_next_state, axis=1) * (batch_done * (-1) + 1)
+        q_target = batch_reward + self.gamma * best_q_next_obser * (batch_done * (-1) + 1)
 
         # [batch_size, 9], target value for the network to train
         y_target = self.qnn.predict(batch_observation)
 
-        for i in range(len(q_target)):
+        for i in range(self.batch_size):
             y_target[i, batch_action[i]] = q_target[i]
 
         history = self.qnn.fit(batch_observation, y_target, epochs=1, verbose=0)
