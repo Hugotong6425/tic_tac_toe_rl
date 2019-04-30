@@ -50,18 +50,21 @@ class Board():
         elif player_type == 'q_player':
             # load in all config and set the default value if not exist
             player_name = player_config.get('player_name', 'q player')
-            hidden_layers_size = player_config['hidden_layers_size']
-            batch_size_learn = player_config.get('batch_size_learn', 32)
+            hidden_layers_size = player_config.get('hidden_layers_size', [20,10])
+            batch_size = player_config.get('batch_size', 32)
+            learning_rate = player_config.get('learning_rate', 0.001)
             batch_until_copy = player_config.get('batch_until_copy', 20)
             saved_nn_path = player_config.get('saved_nn_path', None)
             optimizer = player_config.get('optimizer', 'adam')
             loss = player_config.get('loss', 'mse')
+            saved_nn_path = player_config.get('saved_nn_path', None)
+            is_train = player_config.get('is_train', True)
+            epsilon = player_config.get('epsilon', 1.0)
 
             return Q_player(hidden_layers_size=hidden_layers_size,
-                            batch_size_learn=batch_size_learn,
-                            batch_until_copy=batch_until_copy,
-                            saved_nn_path=saved_nn_path, optimizer=optimizer,
-                            loss=loss, player_name=player_name)
+                            batch_size=batch_size, learning_rate=learning_rate,
+                            saved_nn_path=saved_nn_path, is_train=is_train,
+                            loss=loss, player_name=player_name, epsilon=epsilon)
 
     def reset(self):
         """ reset the board
@@ -73,11 +76,14 @@ class Board():
         self.active_player_id = 1
         self.is_terminal_state = False
 
-    def random_pick_start_player_id(self):
+    def pick_start_player_id(self, who_first=''):
         """  choose the starting player
         run this after def reset()
         """
-        self.active_player_id = np.random.choice([1, -1])
+        if who_first == '':
+            self.active_player_id = np.random.choice([1, -1])
+        else:
+            self.active_player_id = who_first
 
     #---------------------update_state starts-------------------------------
     def check_if_terminal_state(self, state=None):
@@ -254,7 +260,7 @@ class Board():
             print('ERROR, self.active_player_id = %s.\n' % self.active_id)
             return None
 
-    def train(self, episode, memory_size=500, eposide_switch_q_target=10):
+    def train(self, episode, memory_size=100, eposide_switch_q_target=500):
         """ training mode of the Q players
         """
         # only player 1 could be the agent that accept training
@@ -264,6 +270,11 @@ class Board():
 
         # set up default value of variables that will be used
         active_id = None
+        loss = 0
+        win_cnt = 0
+        draw_cnt = 0
+        lose_cnt = 0
+        who_first = 1
         initial_record = {'observation':None, 'action':None,
                           'reward':np.asarray([0,0]),
                           'next_observation':None, 'done':None}
@@ -271,9 +282,19 @@ class Board():
         for epi in range(episode):
             if epi % 1000 == 0:
                 print('Current episode: %s' % epi)
+                print('Loss: %s' % loss)
+                print('p1 win rate: %s' % (win_cnt / 1000))
+                print('p1 draw rate: %s' % (draw_cnt / 1000))
+                print('p1 lose rate: %s' % (lose_cnt / 1000))
+                print()
+                win_cnt = 0
+                draw_cnt = 0
+                lose_cnt = 0
 
             self.reset()
-            self.random_pick_start_player_id()
+            self.pick_start_player_id(who_first)
+            who_first *= -1
+
             state_record = {1: deepcopy(initial_record), -1: deepcopy(initial_record)}
 
             while not self.is_terminal_state:
@@ -310,6 +331,12 @@ class Board():
 
                 #self.print_board()
 
+            if self.winner == 1:
+                win_cnt += 1
+            elif self.winner == 0:
+                draw_cnt += 1
+            elif self.winner == -1:
+                lose_cnt += 1
             #print('Winner is player: ', self.winner)
 
             # add last state record to the memory
@@ -320,28 +347,49 @@ class Board():
             self.p1.memorize(deepcopy(state_record[active_id]))
 
             # train the q_nn after every eposide
-            self.p1.update_qnn(epi)
+            loss = self.p1.update_qnn()
 
             # copy the q_nn to the q_target every eposide_switch_q_target eposide
             if epi % eposide_switch_q_target == 0:
                 self.p1.update_qtarget()
 
-    def play(self):
+        self.p1.save_model()
+        return True
+
+    def play(self, who_first='', episode=1, is_print_board=True):
         """ testing mode/ playing mode
         """
+        win_cnt = 0
+        draw_cnt = 0
+        lose_cnt = 0
+
         # reset the board and randomly pick the starting player
-        self.reset()
-        self.random_pick_start_player_id()
+        for i in range(episode):
+            self.reset()
+            self.pick_start_player_id(who_first)
 
-        while not self.is_terminal_state:
-            # get a np array to indicate whether each acion is available
-            # ask the current active player to pick a action
-            action = self.get_active_player().pick_action(
-                is_action_available=self.get_action_availability(),
-                observation=self.observation
-            )
+            while not self.is_terminal_state:
+                # get a np array to indicate whether each acion is available
+                # ask the current active player to pick a action
+                action = self.get_active_player().pick_action(
+                    is_action_available=self.get_action_availability(),
+                    observation=self.observation
+                )
 
-            # given the action, update the board
-            self.step(action)
+                # given the action, update the board
+                self.step(action)
 
-            self.print_board()
+                if is_print_board:
+                    self.print_board()
+
+            if self.winner == 1:
+                win_cnt += 1
+            elif self.winner == 0:
+                draw_cnt += 1
+            elif self.winner == -1:
+                lose_cnt += 1
+
+        print('p1 win rate: %s' % (win_cnt / episode))
+        print('p1 draw rate: %s' % (draw_cnt / episode))
+        print('p1 lose rate: %s' % (lose_cnt / episode))
+        print()
