@@ -11,13 +11,16 @@ class Player():
     """
     Abstract player class
     """
-    def __init__(self, memory_size=500, player_name=None, player_id=None):
-        self.memory = Memory(memory_size)
+    def __init__(self, player_name=None, player_id=None):
+        self.memory = None
         self.player_name = player_name
         self.player_id = player_id
 
-    def reset(self, player_id):
-        '''reset to the initial state
+    def build_memory(self, memory_size):
+        self.memory = Memory(memory_size)
+
+    def set_player_id(self, player_id):
+        '''set player id
         '''
         self.player_id = player_id
 
@@ -68,6 +71,14 @@ class Player():
         '''
         pass
 
+    def update_qnn(self, batch_data, learning_rate):
+        '''given a batch of data (all observations inside should be tuned)
+        '''
+        pass
+
+    def update_qtarget(self):
+        pass
+
     def get_player_name(self):
         return self.player_name
 
@@ -102,19 +113,17 @@ class Random_player(Player):
 
 
 class Q_player(Player):
-    def __init__(self, hidden_layers_size, batch_size_learn=32,
-                 batch_until_copy=20, saved_nn_path=None, optimizer='adam',
+    def __init__(self, hidden_layers_size, saved_nn_path=None, optimizer='adam',
                  loss='mse', player_name='q player'):
         super(Q_player, self).__init__()
         self.hidden_layers_size = hidden_layers_size
-        self.batch_size_learn = batch_size_learn
-        self.batch_until_copy = batch_until_copy
         self.optimizer = optimizer
         self.loss = loss
         self.player_name = player_name
-        self.initialize_neural_network(saved_nn_path)
+        self.qnn = self.create_neural_network(saved_nn_path)
+        self.qtarget = self.create_neural_network(saved_nn_path)
 
-    def initialize_neural_network(self, saved_nn_path=None):
+    def create_neural_network(self, saved_nn_path=None):
         '''
         if saved_nn_path is not None, load the model.
         if saved_nn_path is None, initialize the model
@@ -131,16 +140,26 @@ class Q_player(Player):
 
             y = Dense(9, activation=None)(hidden_result)
 
-            self.brain = Model(inputs=x, outputs=y)
+            model = Model(inputs=x, outputs=y)
 
-            self.brain.compile(self.optimizer, loss=self.loss)
+            model.compile(self.optimizer, loss=self.loss)
 
         else:
-            #self.brain = keras.load_model()
+            #self.qnn = keras.load_model()
             pass
 
+        return model
+
+    def update_qnn(self, batch_data, learning_rate):
+        '''given a batch of data (all observations inside should be tuned)
+        '''
+        pass
+
+    def update_qtarget(self):
+        self.qtarget.set_weights(self.qnn.get_weights())
+
     def pick_action(self, **kwargs):
-        '''given observation and is_action_available, predict the best action
+        '''given untuned observation and is_action_available, predict the best action
 
         Args:
             - kwargs['observation']: np array with size [9]
@@ -157,7 +176,7 @@ class Q_player(Player):
         tuned_observation = self.tune_observation_view(observation, self.player_id)
 
         # pick the best action within all possible action given by the board
-        q_pred = self.brain.predict(x=tuned_observation.reshape([1, 9])).reshape([-1])
+        q_pred = self.qnn.predict(x=tuned_observation.reshape([1, 9])).reshape([-1])
         mask = (is_action_available == 1)
         subset_idx = np.argmax(q_pred[mask])
         picked_cell = np.arange(q_pred.shape[0])[mask][subset_idx]

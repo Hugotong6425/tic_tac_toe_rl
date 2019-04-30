@@ -1,4 +1,4 @@
-import copy
+from copy import deepcopy
 import numpy as np
 
 from .player import Player, Human, Random_player, Q_player
@@ -17,13 +17,20 @@ class Board():
         - self.active_player_id, int, 1 or -1
         - self.is_terminal_state, bool
     """
-    def __init__(self, p1_config=None, p2_config=None, win_reward=1, lose_reward=-1, draw_reward=0):
+    def __init__(self, p1_config=None, p2_config=None, win_reward=1, lose_reward=-1,
+                 draw_reward=0):
         self.p1 = self.set_up_player(p1_config)
         self.p2 = self.set_up_player(p2_config)
         self.win_reward = win_reward
         self.lose_reward = lose_reward
         self.draw_reward = draw_reward
         self.winner = 0
+
+        # assign player id to both players
+        # only player 1 could be the agent that accept training
+        self.p1.set_player_id(player_id=1)
+        self.p2.set_player_id(player_id=-1)
+
         self.reset()
 
     def set_up_player(self, player_config):
@@ -222,7 +229,7 @@ class Board():
 
         return True
 
-    def get_all_possible_action(self):
+    def get_action_availability(self):
         """ return the availability of each action
         return a np array with size [9],
         1 means that action is available, 0 means the opposite
@@ -247,46 +254,49 @@ class Board():
             print('ERROR, self.active_player_id = %s.\n' % self.active_id)
             return None
 
-    def train(self, episode, memory_size=500):
+    def train(self, episode, memory_size=500, batch_size=32, learning_rate=0.01,
+              eposide_switch_q_target=10):
         """ training mode of the Q players
         """
-        # assign player id to both players
         # only player 1 could be the agent that accept training
-        self.p1.reset(player_id=1)
-        self.p2.reset(player_id=-1)
-        deep_copy = copy.deepcopy
+        self.p1.build_memory(memory_size)
+
         tune_view = Player.tune_observation_view
 
+        # set up default value of variables that will be used
+        active_id = None
         initial_record = {'observation':None, 'action':None,
                           'reward':np.array([0,0]), 'next_observation':None}
+
         for epi in range(episode):
-            state_record = {1: copy.deepcopy(initial_record),
-                            -1: copy.deepcopy(initial_record)}
-            active_id = None
+            if epi % 1000 == 0:
+                print('Current episode: %s' % epi)
 
             self.reset()
-            #self.random_pick_start_player_id()
+            self.random_pick_start_player_id()
+            state_record = {1: deepcopy(initial_record), -1: deepcopy(initial_record)}
 
             while not self.is_terminal_state:
                 # get a np array to indicate whether each acion is available
-                is_action_available = self.get_all_possible_action()
-
                 # ask the current active player to pick a action
                 action = self.get_active_player().pick_action(
-                    is_action_available=is_action_available,
+                    is_action_available=self.get_action_availability(),
                     observation=self.observation
                 )
 
-                # update state record
+                # record the state change for putting into replay memory
                 active_id = self.get_active_player_id()
                 inactive_id = active_id * -1
-                state_record[active_id]['observation'] = tune_view(self.observation.copy(), active_id)
+                state_record[active_id]['observation'] = tune_view(
+                    self.observation.copy(), active_id
+                )
                 state_record[active_id]['action'] = action
 
                 # given the action, update the board
                 observation, reward, is_terminal_state = self.step(action)
 
-                # update state record, note that the active id is changed in self.step()
+                # update state record, note that the self.active_id is changed in self.step()
+                # but the active_id and inactive_id here do not change
                 state_record[active_id]['reward'] = tune_view(reward, active_id)
                 state_record[inactive_id]['next_observation'] = tune_view(observation.copy(), inactive_id)
                 state_record[inactive_id]['reward'] += tune_view(reward, inactive_id)
@@ -295,16 +305,24 @@ class Board():
 
                 # add the state record to the memory
                 if state_record[inactive_id]['observation'] is not None:
-                    self.p1.memorize(deep_copy(state_record[inactive_id]))
+                    self.p1.memorize(deepcopy(state_record[inactive_id]))
 
-                self.print_board()
+                #self.print_board()
+
+            #print('Winner is player: ', self.winner)
 
             # add last state record to the memory
             state_record[active_id]['next_observation'] = tune_view(self.observation, active_id)
             state_record[active_id]['reward'] = state_record[active_id]['reward'][0]
-            self.p1.memorize(deep_copy(state_record[active_id]))
+            self.p1.memorize(deepcopy(state_record[active_id]))
 
-            print('Winner is player: ', self.winner)
+            # train the q_nn after every eposide (> 100 to ensure the num of record > batch)
+            if epi > 100:
+                self.p1.update_qnn(batch_size, learning_rate)
+
+            # copy the q_nn to the q_target every eposide_switch_q_target eposide
+            if epi % eposide_switch_q_target == 0:
+                self.p1.update_qtarget()
 
     def play(self):
         """ testing mode/ playing mode
@@ -313,22 +331,15 @@ class Board():
         self.reset()
         self.random_pick_start_player_id()
 
-        # assign player id to both players
-        self.p1.reset(player_id=1)
-        self.p2.reset(player_id=-1)
-
         while not self.is_terminal_state:
             # get a np array to indicate whether each acion is available
-            is_action_available = self.get_all_possible_action()
-
             # ask the current active player to pick a action
             action = self.get_active_player().pick_action(
-                is_action_available=is_action_available,
+                is_action_available=self.get_action_availability(),
                 observation=self.observation
             )
 
             # given the action, update the board
-            ###TODO: consider remove the return things of step function
             self.step(action)
 
             self.print_board()
