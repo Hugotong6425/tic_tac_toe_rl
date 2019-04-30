@@ -115,13 +115,13 @@ class Board():
         return [p1_reward, p2_reward]
         """
         if winner == 1:
-            return np.array([self.win_reward, self.lose_reward])
+            return np.asarray([self.win_reward, self.lose_reward])
         elif winner == -1:
-            return np.array([self.lose_reward, self.win_reward])
+            return np.asarray([self.lose_reward, self.win_reward])
         elif is_terminal_state:
-            return np.array([self.draw_reward, self.draw_reward])
+            return np.asarray([self.draw_reward, self.draw_reward])
         else:
-            return np.array([0, 0])
+            return np.asarray([0, 0])
 
     def update_observation_from_state(self):
         # update observation_board as the state_board
@@ -234,7 +234,7 @@ class Board():
         return a np array with size [9],
         1 means that action is available, 0 means the opposite
         """
-        return np.array([1 if cell == 0 else 0 for cell in self.state])
+        return np.asarray([1 if cell == 0 else 0 for cell in self.state])
 
     def get_player(self, player_id):
         if player_id == 1:
@@ -254,8 +254,7 @@ class Board():
             print('ERROR, self.active_player_id = %s.\n' % self.active_id)
             return None
 
-    def train(self, episode, memory_size=500, batch_size=32, learning_rate=0.01,
-              eposide_switch_q_target=10):
+    def train(self, episode, memory_size=500, eposide_switch_q_target=10):
         """ training mode of the Q players
         """
         # only player 1 could be the agent that accept training
@@ -266,7 +265,8 @@ class Board():
         # set up default value of variables that will be used
         active_id = None
         initial_record = {'observation':None, 'action':None,
-                          'reward':np.array([0,0]), 'next_observation':None}
+                          'reward':np.asarray([0,0]),
+                          'next_observation':None, 'done':None}
 
         for epi in range(episode):
             if epi % 1000 == 0:
@@ -299,6 +299,7 @@ class Board():
                 # but the active_id and inactive_id here do not change
                 state_record[active_id]['reward'] = tune_view(reward, active_id)
                 state_record[inactive_id]['next_observation'] = tune_view(observation.copy(), inactive_id)
+                state_record[inactive_id]['done'] = is_terminal_state
                 state_record[inactive_id]['reward'] += tune_view(reward, inactive_id)
                 # only record the player own reward, do not record the opponent reward
                 state_record[inactive_id]['reward'] = state_record[inactive_id]['reward'][0]
@@ -314,11 +315,12 @@ class Board():
             # add last state record to the memory
             state_record[active_id]['next_observation'] = tune_view(self.observation, active_id)
             state_record[active_id]['reward'] = state_record[active_id]['reward'][0]
+            state_record[active_id]['done'] = is_terminal_state
+
             self.p1.memorize(deepcopy(state_record[active_id]))
 
-            # train the q_nn after every eposide (> 100 to ensure the num of record > batch)
-            if epi > 100:
-                self.p1.update_qnn(batch_size, learning_rate)
+            # train the q_nn after every eposide
+            self.p1.update_qnn(epi)
 
             # copy the q_nn to the q_target every eposide_switch_q_target eposide
             if epi % eposide_switch_q_target == 0:
