@@ -24,6 +24,9 @@ class Player():
         '''
         self.player_id = player_id
 
+    def change_mode(self, is_train):
+        self.is_train = is_train
+
     @staticmethod
     def tune_observation_view(observation, player_id):
         ''' if player_id is -1, swap the 1 and -1 of the observation
@@ -172,6 +175,9 @@ class Q_player(Player):
             self.epsilon = self.epsilon_min
             return self.epsilon_min
 
+    def change_if_special_sample(self, is_special_sample):
+        self.is_special_sample = is_special_sample
+
     def convert_memory_to_train_data(self, batch_memory_data):
         '''
         Args:
@@ -199,8 +205,13 @@ class Q_player(Player):
         if self.memory.get_memory_size() < self.batch_size:
             return
 
+        #print('self.memory.get_memory_size(): ', self.memory.get_memory_size())
+
         # get memory data and convert the data format to feed the network
-        batch_memory_data = self.memory.sample(self.batch_size)
+        batch_memory_data = self.memory.sample(self.batch_size, self.is_special_sample)
+
+        #print('batch_memory_data: ', batch_memory_data)
+
         batch_observation, batch_action, batch_reward, batch_next_observation, \
             batch_done = self.convert_memory_to_train_data(batch_memory_data)
 

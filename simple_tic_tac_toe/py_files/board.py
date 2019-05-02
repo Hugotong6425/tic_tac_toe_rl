@@ -51,7 +51,7 @@ class Board():
             # load in all config and set the default value if not exist
             player_name = player_config.get('player_name', 'q player')
             hidden_layers_size = player_config.get('hidden_layers_size', [20,10])
-            batch_size = player_config.get('batch_size', 32)
+            batch_size = player_config.get('batch_size', 64)
             learning_rate = player_config.get('learning_rate', 0.001)
             batch_until_copy = player_config.get('batch_until_copy', 20)
             saved_nn_path = player_config.get('saved_nn_path', None)
@@ -65,7 +65,7 @@ class Board():
             return Q_player(hidden_layers_size=hidden_layers_size,
                             batch_size=batch_size, learning_rate=learning_rate,
                             saved_nn_path=saved_nn_path, is_train=is_train,
-                            is_double_dqns=is_double_dqns,
+                            is_double_dqns=is_double_dqns, epsilon_decay=0.9995,
                             loss=loss, player_name=player_name, epsilon=epsilon)
 
     def reset(self):
@@ -262,11 +262,13 @@ class Board():
             print('ERROR, self.active_player_id = %s.\n' % self.active_id)
             return None
 
-    def train(self, episode, memory_size=100, eposide_switch_q_target=500):
+    def train(self, episode, memory_size=500, eposide_switch_q_target=500,
+              is_special_sample=True):
         """ training mode of the Q players
         """
         # only player 1 could be the agent that accept training
         self.p1.build_memory(memory_size)
+        self.p1.change_if_special_sample(is_special_sample)
 
         tune_view = Player.tune_observation_view
 
@@ -293,14 +295,15 @@ class Board():
                 print('p1 draw rate: %s' % (draw_cnt / 1000))
                 print('p1 lose rate: %s' % (lose_cnt / 1000))
                 print()
-                win_cnt = 0
-                draw_cnt = 0
-                lose_cnt = 0
 
-                win_rate_list.append(win_cnt / 1000)
+                win_rate_list.append((win_cnt / 1000))
                 draw_rate_list.append(draw_cnt / 1000)
                 lose_rate_list.append(lose_cnt / 1000)
                 loss_list.append(loss)
+
+                win_cnt = 0
+                draw_cnt = 0
+                lose_cnt = 0
 
             self.reset()
             self.pick_start_player_id(who_first)
@@ -340,15 +343,12 @@ class Board():
                 if state_record[inactive_id]['observation'] is not None:
                     self.p1.memorize(deepcopy(state_record[inactive_id]))
 
-                #self.print_board()
-
             if self.winner == 1:
                 win_cnt += 1
             elif self.winner == 0:
                 draw_cnt += 1
             elif self.winner == -1:
                 lose_cnt += 1
-            #print('Winner is player: ', self.winner)
 
             # add last state record to the memory
             state_record[active_id]['next_observation'] = tune_view(self.observation, active_id)
@@ -373,6 +373,8 @@ class Board():
         win_cnt = 0
         draw_cnt = 0
         lose_cnt = 0
+        self.p1.change_mode(is_train=False)
+        self.p2.change_mode(is_train=False)
 
         # reset the board and randomly pick the starting player
         for i in range(episode):
