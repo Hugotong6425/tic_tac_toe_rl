@@ -17,8 +17,8 @@ class Board():
         - self.active_player_id, int, 1 or -1
         - self.is_terminal_state, bool
     """
-    def __init__(self, p1_config=None, p2_config=None, win_reward=1, lose_reward=-1,
-                 draw_reward=0):
+    def __init__(self, p1_config=None, p2_config=None, win_reward=1,
+                 lose_reward=-1, draw_reward=0):
         self.p1 = self.set_up_player(p1_config)
         self.p2 = self.set_up_player(p2_config)
         self.win_reward = win_reward
@@ -53,20 +53,23 @@ class Board():
             hidden_layers_size = player_config.get('hidden_layers_size', [20,10])
             batch_size = player_config.get('batch_size', 64)
             learning_rate = player_config.get('learning_rate', 0.001)
-            batch_until_copy = player_config.get('batch_until_copy', 20)
-            saved_nn_path = player_config.get('saved_nn_path', None)
             optimizer = player_config.get('optimizer', 'adam')
             loss = player_config.get('loss', 'mse')
-            saved_nn_path = player_config.get('saved_nn_path', None)
+            load_trained_model_path = player_config.get('load_trained_model_path', None)
             is_train = player_config.get('is_train', True)
-            epsilon = player_config.get('epsilon', 1.0)
+            ini_epsilon = player_config.get('ini_epsilon', 1.0)
             is_double_dqns = player_config.get('is_double_dqns', True)
+            epsilon_decay = player_config.get('epsilon_decay', 0.9995)
+            epsilon_min = player_config.get('epsilon_min', 0.01)
+            gamma = player_config.get('gamma', 0.99)
 
             return Q_player(hidden_layers_size=hidden_layers_size,
                             batch_size=batch_size, learning_rate=learning_rate,
-                            saved_nn_path=saved_nn_path, is_train=is_train,
-                            is_double_dqns=is_double_dqns, epsilon_decay=0.9995,
-                            loss=loss, player_name=player_name, epsilon=epsilon)
+                            load_trained_model_path=load_trained_model_path,
+                            is_train=is_train, is_double_dqns=is_double_dqns,
+                            epsilon_decay=epsilon_decay, loss=loss,
+                            player_name=player_name, ini_epsilon=ini_epsilon,
+                            epsilon_min=epsilon_min, gamma=gamma)
 
     def reset(self):
         """ reset the board
@@ -129,7 +132,7 @@ class Board():
         elif is_terminal_state:
             return np.asarray([self.draw_reward, self.draw_reward])
         else:
-            return np.asarray([0, 0])
+            return np.asarray([0.0, 0.0])
 
     def update_observation_from_state(self):
         # update observation_board as the state_board
@@ -262,8 +265,24 @@ class Board():
             print('ERROR, self.active_player_id = %s.\n' % self.active_id)
             return None
 
-    def train(self, episode, memory_size=500, eposide_switch_q_target=500,
-              is_special_sample=True):
+    def report_stat(self, epi, loss, win_cnt, draw_cnt, lose_cnt, games_played):
+        if epi is not None:
+            print('Current episode: %s' % epi)
+        if loss is not None:
+            print('Loss: %s' % loss)
+        print('p1 win rate: %s' % (win_cnt / games_played))
+        print('p1 draw rate: %s' % (draw_cnt / games_played))
+        print('p1 lose rate: %s' % (lose_cnt / games_played))
+        print()
+
+    def save_stat_history(self, loss, win_cnt, draw_cnt, lose_cnt, games_played):
+        self.win_rate_list.append((win_cnt / games_played))
+        self.draw_rate_list.append(draw_cnt / games_played)
+        self.lose_rate_list.append(lose_cnt / games_played)
+        self.loss_list.append(loss)
+
+    def train(self, episode, memory_size, episode_switch_q_target,
+              is_special_sample, save_model_path):
         """ training mode of the Q players
         """
         # only player 1 could be the agent that accept training
@@ -282,34 +301,25 @@ class Board():
         initial_record = {'observation':None, 'action':None,
                           'reward':np.asarray([0,0]),
                           'next_observation':None, 'done':None}
-        win_rate_list = []
-        draw_rate_list = []
-        lose_rate_list = []
-        loss_list = []
+
+        self.win_rate_list = []
+        self.draw_rate_list = []
+        self.lose_rate_list = []
+        self.loss_list = []
 
         for epi in range(episode):
-            if epi % 1000 == 0:
-                print('Current episode: %s' % epi)
-                print('Loss: %s' % loss)
-                print('p1 win rate: %s' % (win_cnt / 1000))
-                print('p1 draw rate: %s' % (draw_cnt / 1000))
-                print('p1 lose rate: %s' % (lose_cnt / 1000))
-                print()
+            if (epi+1) % 1000 == 0:
+                self.report_stat(epi+1, loss, win_cnt, draw_cnt, lose_cnt, games_played=1000)
+                self.save_stat_history(loss, win_cnt, draw_cnt, lose_cnt, games_played=1000)
+                win_cnt = draw_cnt = lose_cnt = 0
 
-                win_rate_list.append((win_cnt / 1000))
-                draw_rate_list.append(draw_cnt / 1000)
-                lose_rate_list.append(lose_cnt / 1000)
-                loss_list.append(loss)
-
-                win_cnt = 0
-                draw_cnt = 0
-                lose_cnt = 0
-
+            # reset the board, switch starting player
             self.reset()
             self.pick_start_player_id(who_first)
             who_first *= -1
 
-            state_record = {1: deepcopy(initial_record), -1: deepcopy(initial_record)}
+            state_record = {1: deepcopy(initial_record),
+                            -1: deepcopy(initial_record)}
 
             while not self.is_terminal_state:
                 # get a np array to indicate whether each acion is available
@@ -322,9 +332,9 @@ class Board():
                 # record the state change for putting into replay memory
                 active_id = self.get_active_player_id()
                 inactive_id = active_id * -1
-                state_record[active_id]['observation'] = tune_view(
-                    self.observation.copy(), active_id
-                )
+                tunned_observation = tune_view(self.observation.copy(), active_id)
+                cat_observation = Player.observation_to_catagorical(tunned_observation)
+                state_record[active_id]['observation'] = cat_observation
                 state_record[active_id]['action'] = action
 
                 # given the action, update the board
@@ -333,9 +343,11 @@ class Board():
                 # update state record, note that the self.active_id is changed in self.step()
                 # but the active_id and inactive_id here do not change
                 state_record[active_id]['reward'] = tune_view(reward, active_id)
-                state_record[inactive_id]['next_observation'] = tune_view(observation.copy(), inactive_id)
+                tunned_observation = tune_view(observation.copy(), inactive_id)
+                cat_observation = Player.observation_to_catagorical(tunned_observation)
+                state_record[inactive_id]['next_observation'] = cat_observation
                 state_record[inactive_id]['done'] = is_terminal_state
-                state_record[inactive_id]['reward'] += tune_view(reward, inactive_id)
+                state_record[inactive_id]['reward'] = state_record[inactive_id]['reward'] + tune_view(reward, inactive_id)
                 # only record the player own reward, do not record the opponent reward
                 state_record[inactive_id]['reward'] = state_record[inactive_id]['reward'][0]
 
@@ -351,7 +363,9 @@ class Board():
                 lose_cnt += 1
 
             # add last state record to the memory
-            state_record[active_id]['next_observation'] = tune_view(self.observation, active_id)
+            tunned_observation = tune_view(self.observation.copy(), inactive_id)
+            cat_observation = Player.observation_to_catagorical(tunned_observation)
+            state_record[active_id]['next_observation'] = cat_observation
             state_record[active_id]['reward'] = state_record[active_id]['reward'][0]
             state_record[active_id]['done'] = is_terminal_state
 
@@ -360,12 +374,12 @@ class Board():
             # train the q_nn after every eposide
             loss = self.p1.update_qnn()
 
-            # copy the q_nn to the q_target every eposide_switch_q_target eposide
-            if epi % eposide_switch_q_target == 0:
+            # copy the q_nn to the q_target every episode_switch_q_target eposide
+            if epi % episode_switch_q_target == 0:
                 self.p1.update_qtarget()
 
-        self.p1.save_model()
-        return win_rate_list, draw_rate_list, lose_rate_list, loss_list
+        self.p1.save_model(save_model_path)
+        return self.win_rate_list, self.draw_rate_list, self.lose_rate_list, self.loss_list
 
     def play(self, who_first='', episode=1, is_print_board=True):
         """ testing mode/ playing mode
@@ -402,7 +416,4 @@ class Board():
             elif self.winner == -1:
                 lose_cnt += 1
 
-        print('p1 win rate: %s' % (win_cnt / episode))
-        print('p1 draw rate: %s' % (draw_cnt / episode))
-        print('p1 lose rate: %s' % (lose_cnt / episode))
-        print()
+        self.report_stat(None, None, win_cnt, draw_cnt, lose_cnt, episode)

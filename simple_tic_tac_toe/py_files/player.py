@@ -59,6 +59,37 @@ class Player():
         '''
         return observation * player_id
 
+    @staticmethod
+    def observation_to_catagorical(observation):
+        '''given a observation of np array [9], convert it to catagorical form
+        i.e. np array of size [27]
+
+        input = array([ 1, -1, 0,
+                        0,  0, 0,
+                       -1, -1, 1 ])
+
+        output = array([ 0, 1, 0,
+                         0, 0, 1,
+                         1, 0, 0,
+                         1, 0, 0,
+                         1, 0, 0,
+                         1, 0, 0,
+                         0, 0, 1,
+                         0, 0, 1,
+                         0, 1, 1])
+        '''
+        cat_observation = []
+        for cell in range(9):
+            if observation[cell] == 0:
+                cat_observation.extend([1,0,0])
+            elif observation[cell] == 1:
+                cat_observation.extend([0,1,0])
+            elif observation[cell] == -1:
+                cat_observation.extend([0,0,1])
+            else:
+                print('ERROR in observation to catagorical')
+        return np.array(cat_observation)
+
     def pick_action(self, **kwargs):
         '''different players have different way to pick an action
         '''
@@ -106,7 +137,7 @@ class Random_player(Player):
     """
     this player will pick random acion for all situation
     """
-    def __init__(self, player_name='random player'):
+    def __init__(self, player_name='random player', load_trained_model_path=None):
         super(Random_player, self).__init__()
         self.player_name = player_name
 
@@ -116,33 +147,32 @@ class Random_player(Player):
 
 
 class Q_player(Player):
-    def __init__(self, hidden_layers_size, batch_size=64, learning_rate=0.001,
-                 epsilon=1, epsilon_min=0.01, epsilon_decay=0.999995,
-                 is_double_dqns=True, gamma=0.99, loss='mse', saved_nn_path=None,
-                 player_name='q player', is_train=True):
+    def __init__(self, hidden_layers_size, batch_size, learning_rate,
+                 ini_epsilon, epsilon_min, epsilon_decay, is_double_dqns, gamma,
+                 loss, load_trained_model_path, player_name, is_train):
         super(Q_player, self).__init__()
         self.hidden_layers_size = hidden_layers_size
         self.batch_size = batch_size
         self.learning_rate = learning_rate
-        self.epsilon = epsilon
+        self.epsilon = ini_epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         self.is_double_dqns = is_double_dqns
         self.gamma = gamma
         self.loss = loss
         self.player_name = player_name
-        self.qnn = self.create_neural_network(saved_nn_path)
+        self.qnn = self.create_neural_network(load_trained_model_path)
         self.is_train = is_train
 
-        self.q_target_network = self.create_neural_network(saved_nn_path)
+        self.q_target_network = self.create_neural_network(load_trained_model_path)
 
-    def create_neural_network(self, saved_nn_path=None):
+    def create_neural_network(self, load_trained_model_path=None):
         '''
-        if saved_nn_path is not None, load the model.
-        if saved_nn_path is None, initialize the model
+        if load_trained_model_path is not None, load the model.
+        if load_trained_model_path is None, initialize the model
         '''
-        if saved_nn_path is None:
-            x = Input(shape=(9,))
+        if load_trained_model_path is None:
+            x = Input(shape=(27,))
 
             hidden_result = Dense(self.hidden_layers_size[0], activation='relu',
                                   kernel_initializer='he_normal')(x)
@@ -161,11 +191,11 @@ class Q_player(Player):
             model.compile(optimizer=Adam(lr=self.learning_rate), loss=self.loss)
             return model
         else:
-            print('Load in model: %s' % saved_nn_path)
-            return load_model(saved_nn_path)
+            print('Load in model: %s' % load_trained_model_path)
+            return load_model(load_trained_model_path)
 
-    def save_model(self):
-        self.qnn.save('model.h5')
+    def save_model(self, save_model_path):
+        self.qnn.save(save_model_path)
 
     def get_current_epsilon(self):
         if self.epsilon > self.epsilon_min:
@@ -183,15 +213,19 @@ class Q_player(Player):
         Args:
             - batch_memory_data: list of memory data points
 
+        observation:
+            - changed to catagorical
+            - tunned view
+
         memory data points:
-            [observation: np.array(9), action: int, reward: int,
-             next_observation: np.array(9), done: bool]
+            [observation: np.array(27), action: int, reward: int,
+             next_observation: np.array(27), done: bool]
 
         Returns:
-            - batch_observation: np array of int [batch_size, 9]
+            - batch_observation: np array of int [batch_size, 27]
             - batch_action: np array of int [batch_size]
             - batch_reward: np array of int [batch_size]
-            - batch_next_observation: np array of int [batch_size, 9]
+            - batch_next_observation: np array of int [batch_size, 27]
             - batch_done: np array of bool [batch_size]
         '''
         stack_memory = np.stack(batch_memory_data, axis=1)
@@ -241,14 +275,14 @@ class Q_player(Player):
         return history.history['loss'][0]
 
     def update_qtarget(self):
-        print(self.epsilon)
+        print('current epsilon: ', self.epsilon)
         self.q_target_network.set_weights(self.qnn.get_weights())
 
     def pick_action(self, **kwargs):
         '''given untuned observation and is_action_available, predict the best action
 
         Args:
-            - kwargs['observation']: np array with size [9]
+            - kwargs['observation']: np array with size [9], untunned, not catagorical
             - kwargs['is_action_available']: np array with size [9]
 
         Returns:
@@ -263,10 +297,11 @@ class Q_player(Player):
             action_space = [i for i in range(9) if is_action_available[i]]
             return np.random.choice(action_space)
 
-        tuned_observation = self.tune_observation_view(observation, self.player_id)
+        tunned_observation = self.tune_observation_view(observation, self.player_id)
+        cat_observation = self.observation_to_catagorical(tunned_observation)
 
         # pick the best action within all possible action given by the board
-        q_pred = self.qnn.predict(x=tuned_observation.reshape([1, 9])).reshape([-1])
+        q_pred = self.qnn.predict(x=cat_observation.reshape([1, 27])).reshape([-1])
         mask = (is_action_available == 1)
         subset_idx = np.argmax(q_pred[mask])
         picked_cell = np.arange(q_pred.shape[0])[mask][subset_idx]
