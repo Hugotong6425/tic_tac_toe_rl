@@ -8,6 +8,14 @@ In practice, tabular Q learning is a better method to train a tic-tac-toe agent 
 
 ## Train model
 
+### Requirement
+
+Required package:
+- numpy
+- keras
+
+You may also install them by `python install -r requirements.txt`
+
 Before training the model, you may open ```train_rl.py``` to change model config. Then simply ```python train_rl.py``` to start the training.
 
 ### Config
@@ -16,7 +24,7 @@ Before training the model, you may open ```train_rl.py``` to change model config
 - `learning_rate`: float, learning rate
 - `ini_epsilon`: float, initial epsilon
 - `epsilon_decay`: float, every episode the current epsilon will time this factor
-- `epsilon_min`: float, minimum epsilon 
+- `epsilon_min`: float, minimum epsilon
 - `gamma`: float, reward discount
 - `hidden_layers_size`: list of int, only relevent if `load_trained_model_path` is None
 - `is_double_dqns`: bool, whether to use double dqn
@@ -26,7 +34,7 @@ Before training the model, you may open ```train_rl.py``` to change model config
 - `is_train`: set it to be true when training
 - `p2_player_type`: str, 'random' or 'q_player'
 - `p2_load_trained_model_path`: If `p2_player_type = 'random`, set it to None, else set it a str (saved model path)
-- `episode`: int, episode 
+- `episode`: int, episode
 - `memory_size`: int, replay memory size
 - `episode_switch_q_target`: int, every a number of episode, copy q_value model parameters to q_target
 - `is_special_sample`: bool, if True, focus on sampling terminal state when deciding training batch
